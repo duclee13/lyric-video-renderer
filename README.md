@@ -39,12 +39,49 @@ Upload an `.mp3` file — or an `.mp3` + `lyrics.txt` for 100% exact wording on 
 │           ├── WordReveal.tsx            # Directional horizontal SVG motion blur reveal
 │           ├── StarEmblem.tsx            # Pulsing bottom-center 5-pointed star
 │           └── Vignette.tsx              # Retro edge vignette & soft center bloom
+├── web/                                  # Next.js App Router + Tailwind dashboard (Vercel)
+│   ├── .env.example                      # Server-side GitHub PAT & optional passphrase vars
+│   └── src/
+│       ├── lib/                          # GitHub REST client & constant-time auth
+│       └── app/
+│           ├── page.tsx                  # Dark studio upload, progress & video preview UI
+│           └── api/                      # /api/render, /api/status, /api/download, /api/runs
 └── requirements.txt                      # Python / WhisperX dependencies
 ```
 
 ---
 
-## Option 1: One-Click Cloud Render (GitHub Actions)
+## Option 1: Web Dashboard on Vercel (Recommended)
+
+The `web/` Next.js app provides a drag-and-drop studio UI for uploading `.mp3` files (`<= 4.2 MB`), pasting optional lyrics, tracking live GitHub Actions steps, previewing the finished `.mp4`, and browsing recent renders. Vercel only serves the thin UI and API routes; all WhisperX + Remotion compute stays on GitHub Actions.
+
+### Deploy to Vercel
+
+1. Create a **Fine-Grained GitHub Personal Access Token** scoped to `duclee13/lyric-video-renderer` with:
+   - **Contents:** Read and write *(uploads `input/jobs/<jobId>/audio.mp3` with `[skip ci]`)*
+   - **Actions:** Read and write *(dispatches `render-lyrics.yml`, polls job steps, downloads MP4 artifacts)*
+2. In Vercel, click **Add New → Project** and import `duclee13/lyric-video-renderer`.
+3. Set **Root Directory** to `web`.
+4. Add **Environment Variables** (server-side only — see `web/.env.example`):
+   - `GITHUB_TOKEN`: your Fine-Grained PAT
+   - `GITHUB_OWNER`: `duclee13` *(default)*
+   - `GITHUB_REPO`: `lyric-video-renderer` *(default)*
+   - `GITHUB_BRANCH`: `main` *(default)*
+   - `APP_PASSWORD`: *(optional)* studio passphrase required by the UI and all API routes so public visitors cannot consume your Actions minutes
+5. Click **Deploy**.
+
+### Local Web Dev
+
+```bash
+cd web
+cp .env.example .env.local   # fill in GITHUB_TOKEN (and optional APP_PASSWORD)
+npm install
+npm run dev
+```
+
+---
+
+## Option 2: Direct GitHub Actions (No Web UI)
 
 ### A. Push to `input/` (Zero-Touch)
 
@@ -68,7 +105,7 @@ Upload an `.mp3` file — or an `.mp3` + `lyrics.txt` for 100% exact wording on 
 
 ---
 
-## Option 2: Local Preview & Rendering
+## Option 3: Local Preview & Rendering
 
 ### Prerequisites
 

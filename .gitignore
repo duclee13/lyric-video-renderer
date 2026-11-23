@@ -14,6 +14,16 @@ remotion/public/*.wav
 remotion/public/*.m4a
 remotion/public/*.ogg
 
+# Next.js web dashboard
+web/node_modules/
+web/.next/
+web/out/
+web/next-env.d.ts
+*.tsbuildinfo
+web/.env
+web/.env*.local
+!web/.env.example
+
 # Generated pipeline artifacts & renders
 data/
 out/

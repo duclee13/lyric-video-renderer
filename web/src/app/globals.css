@@ -1,0 +1,62 @@
+@import "tailwindcss";
+
+:root {
+  --studio-bg: #0c0813;
+  --studio-surface: #140f1e;
+  --studio-elevated: #1c1529;
+  --studio-border: rgba(210, 155, 255, 0.13);
+  --studio-border-strong: rgba(210, 155, 255, 0.28);
+  --studio-ink: #f6f1fc;
+  --studio-muted: #a698b8;
+  --lavender-bright: #d29bff;
+  --lavender-mid: #c98bf5;
+  --lavender-deep: #b476e8;
+  --plum-core: #2b084a;
+  --plum-edge: #1f0536;
+}
+
+@theme inline {
+  --color-background: var(--studio-bg);
+  --color-foreground: var(--studio-ink);
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-montserrat), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  min-height: 100vh;
+  background-color: var(--studio-bg);
+  background-image:
+    radial-gradient(
+      ellipse 78% 46% at 50% -10%,
+      rgba(43, 8, 74, 0.62) 0%,
+      rgba(31, 5, 54, 0.22) 48%,
+      rgba(12, 8, 19, 0) 80%
+    );
+  color: var(--studio-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Subtle studio scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(20, 15, 30, 0.6);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(201, 139, 245, 0.22);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(201, 139, 245, 0.4);
+}

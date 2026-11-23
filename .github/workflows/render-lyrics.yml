@@ -1,10 +1,12 @@
 name: Render Lyric Video
+run-name: "Render Lyric Video [${{ inputs.aspect_ratio || '4:3' }}] ${{ inputs.audio_path || 'push' }}"
 
 on:
   push:
     paths:
       - "input/*.mp3"
       - "input/lyrics.txt"
+      - "!input/jobs/**"
   workflow_dispatch:
     inputs:
       audio_path:
@@ -158,9 +160,12 @@ jobs:
             LYRICS_FILE="data/dispatch_lyrics.txt"
           else
             STEM="${AUDIO_FILE%.*}"
+            AUDIO_DIR="$(dirname "$AUDIO_FILE")"
             if [ -f "${STEM}.txt" ]; then
               LYRICS_FILE="${STEM}.txt"
-            elif [ -f "input/lyrics.txt" ]; then
+            elif [ -f "${AUDIO_DIR}/lyrics.txt" ]; then
+              LYRICS_FILE="${AUDIO_DIR}/lyrics.txt"
+            elif [[ "$AUDIO_FILE" != input/jobs/* ]] && [ -f "input/lyrics.txt" ]; then
               LYRICS_FILE="input/lyrics.txt"
             fi
           fi
