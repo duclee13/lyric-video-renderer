@@ -1,0 +1,245 @@
+name: Render Lyric Video
+
+on:
+  push:
+    paths:
+      - "input/*.mp3"
+      - "input/lyrics.txt"
+  workflow_dispatch:
+    inputs:
+      audio_path:
+        description: "Path to MP3 file (leave empty to auto-detect newest input/*.mp3)"
+        required: false
+        default: ""
+        type: string
+      lyrics_text:
+        description: "Optional exact lyrics (overrides input/lyrics.txt; supports literal \\n for line breaks)"
+        required: false
+        default: ""
+        type: string
+      aspect_ratio:
+        description: "Output video aspect ratio preset"
+        required: true
+        default: "4:3"
+        type: choice
+        options:
+          - "4:3"
+          - "9:16"
+          - "1:1"
+      whisper_model:
+        description: "WhisperX ASR model size (CPU int8)"
+        required: true
+        default: "small"
+        type: choice
+        options:
+          - "tiny"
+          - "base"
+          - "small"
+          - "medium"
+      language:
+        description: "Audio language code (e.g. en, vi) or 'auto'"
+        required: true
+        default: "auto"
+        type: string
+
+concurrency:
+  group: render-lyrics-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  render:
+    name: Align & Render Kinetic Lyric Video
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Install system dependencies (FFmpeg & Chromium libs)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            ffmpeg \
+            libnss3 \
+            libatk1.0-0 \
+            libatk-bridge2.0-0 \
+            libcups2 \
+            libdrm2 \
+            libxkbcommon0 \
+            libxcomposite1 \
+            libxdamage1 \
+            libxfixes3 \
+            libxrandr2 \
+            libgbm1 \
+            libpango-1.0-0 \
+            libcairo2
+          sudo apt-get install -y -qq libasound2t64 || sudo apt-get install -y -qq libasound2
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: "requirements.txt"
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: "remotion/package-lock.json"
+
+      - name: Cache WhisperX & HuggingFace models
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/huggingface
+            ~/.cache/whisper
+            ~/.cache/torch
+          key: ml-models-${{ runner.os }}-${{ inputs.whisper_model || 'small' }}-${{ inputs.language || 'auto' }}
+          restore-keys: |
+            ml-models-${{ runner.os }}-${{ inputs.whisper_model || 'small' }}-
+            ml-models-${{ runner.os }}-
+
+      - name: Cache Remotion Chromium binary
+        uses: actions/cache@v4
+        with:
+          path: remotion/node_modules/.remotion
+          key: remotion-browser-${{ runner.os }}-${{ hashFiles('remotion/package-lock.json') }}
+          restore-keys: |
+            remotion-browser-${{ runner.os }}-
+
+      - name: Install Python dependencies (CPU PyTorch + WhisperX)
+        run: |
+          python -m pip install --upgrade pip
+          pip install --index-url https://download.pytorch.org/whl/cpu torch torchaudio
+          pip install -r requirements.txt
+
+      - name: Install Remotion dependencies & ensure Chromium
+        working-directory: remotion
+        run: |
+          npm ci
+          npx remotion browser ensure
+
+      - name: Resolve input audio and optional lyrics
+        id: resolve
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_AUDIO_PATH: ${{ inputs.audio_path }}
+          INPUT_LYRICS_TEXT: ${{ inputs.lyrics_text }}
+          INPUT_ASPECT_RATIO: ${{ inputs.aspect_ratio }}
+          INPUT_WHISPER_MODEL: ${{ inputs.whisper_model }}
+          INPUT_LANGUAGE: ${{ inputs.language }}
+        run: |
+          mkdir -p data out remotion/public
+
+          AUDIO_FILE=""
+          if [ -n "$INPUT_AUDIO_PATH" ]; then
+            AUDIO_FILE="$INPUT_AUDIO_PATH"
+          elif [ "$EVENT_NAME" = "push" ] && git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
+            AUDIO_FILE=$(git diff --name-only --diff-filter=AM HEAD~1 HEAD -- 'input/*.mp3' | head -n 1 || true)
+          fi
+
+          if [ -z "$AUDIO_FILE" ]; then
+            AUDIO_FILE=$(ls -t input/*.mp3 2>/dev/null | head -n 1 || true)
+          fi
+
+          if [ -z "$AUDIO_FILE" ] || [ ! -f "$AUDIO_FILE" ]; then
+            echo "::error::No MP3 file found. Upload an .mp3 to input/ or pass audio_path."
+            exit 1
+          fi
+
+          LYRICS_FILE=""
+          if [ -n "$INPUT_LYRICS_TEXT" ]; then
+            python -c 'import os, pathlib; raw = os.environ["INPUT_LYRICS_TEXT"].replace("\\n", "\n").strip(); pathlib.Path("data/dispatch_lyrics.txt").write_text(raw + "\n", encoding="utf-8")'
+            LYRICS_FILE="data/dispatch_lyrics.txt"
+          else
+            STEM="${AUDIO_FILE%.*}"
+            if [ -f "${STEM}.txt" ]; then
+              LYRICS_FILE="${STEM}.txt"
+            elif [ -f "input/lyrics.txt" ]; then
+              LYRICS_FILE="input/lyrics.txt"
+            fi
+          fi
+
+          cp "$AUDIO_FILE" remotion/public/audio.mp3
+
+          ASPECT_RATIO="${INPUT_ASPECT_RATIO:-4:3}"
+          WHISPER_MODEL="${INPUT_WHISPER_MODEL:-small}"
+          LANGUAGE="${INPUT_LANGUAGE:-auto}"
+
+          echo "audio_file=${AUDIO_FILE}" >> "$GITHUB_OUTPUT"
+          echo "lyrics_file=${LYRICS_FILE}" >> "$GITHUB_OUTPUT"
+          echo "aspect_ratio=${ASPECT_RATIO}" >> "$GITHUB_OUTPUT"
+          echo "whisper_model=${WHISPER_MODEL}" >> "$GITHUB_OUTPUT"
+          echo "language=${LANGUAGE}" >> "$GITHUB_OUTPUT"
+
+          echo "Resolved audio: ${AUDIO_FILE}"
+          echo "Resolved lyrics: ${LYRICS_FILE:-<none (Mode A: WhisperX ASR)>}"
+          echo "Preset: ${ASPECT_RATIO} | Model: ${WHISPER_MODEL} | Language: ${LANGUAGE}"
+
+      - name: Extract word-level timestamps (WhisperX)
+        env:
+          AUDIO_FILE: ${{ steps.resolve.outputs.audio_file }}
+          LYRICS_FILE: ${{ steps.resolve.outputs.lyrics_file }}
+          WHISPER_MODEL: ${{ steps.resolve.outputs.whisper_model }}
+          LANGUAGE: ${{ steps.resolve.outputs.language }}
+        run: |
+          ARGS=(
+            --audio "$AUDIO_FILE"
+            --language "$LANGUAGE"
+            --model "$WHISPER_MODEL"
+            --output data/words.json
+          )
+          if [ -n "$LYRICS_FILE" ]; then
+            ARGS+=(--lyrics "$LYRICS_FILE")
+          fi
+          python scripts/align.py "${ARGS[@]}"
+
+      - name: Build kinetic typography scenes
+        env:
+          AUDIO_FILE: ${{ steps.resolve.outputs.audio_file }}
+          LYRICS_FILE: ${{ steps.resolve.outputs.lyrics_file }}
+          ASPECT_RATIO: ${{ steps.resolve.outputs.aspect_ratio }}
+        run: |
+          ARGS=(
+            --words data/words.json
+            --audio "$AUDIO_FILE"
+            --aspect-ratio "$ASPECT_RATIO"
+            --audio-src audio.mp3
+            --output data/scenes.json
+          )
+          if [ -n "$LYRICS_FILE" ]; then
+            ARGS+=(--lyrics "$LYRICS_FILE")
+          fi
+          python scripts/build_scenes.py "${ARGS[@]}"
+
+      - name: Render lyric video with Remotion
+        working-directory: remotion
+        run: |
+          npx remotion render src/index.ts LyricVideo ../out/lyric-video.mp4 \
+            --props=../data/scenes.json \
+            --codec=h264 \
+            --crf=18
+
+      - name: Upload rendered MP4 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lyric-video
+          path: out/lyric-video.mp4
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Upload alignment & scene metadata (debug)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lyric-timing-data
+          path: |
+            data/words.json
+            data/scenes.json
+          retention-days: 7
+          if-no-files-found: ignore

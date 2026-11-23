@@ -1,0 +1,9 @@
+# Core speech transcription and wav2vec2 forced alignment
+# On CPU-only environments (such as GitHub Actions ubuntu-latest), install CPU PyTorch first:
+#   pip install --index-url https://download.pytorch.org/whl/cpu torch torchaudio
+torch>=2.2.0
+torchaudio>=2.2.0
+whisperx>=3.3.1
+faster-whisper>=1.1.0
+transformers>=4.40.0
+numpy>=1.26.0
